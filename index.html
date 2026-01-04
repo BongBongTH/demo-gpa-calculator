@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GPA Calculator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: Arial, sans-serif; background: #f6f8fa; margin: 0; padding: 30px; color: #222; }
+    h1 { text-align: center; font-size: 2rem; margin-bottom: 1em; }
+    .container { display: flex; gap: 30px; overflow-x: auto; margin-bottom: 30px; }
+    .semester { background: #fff; border-radius: 8px; box-shadow: 0 2px 6px #d4d4d4; padding: 20px; min-width: 240px; display: flex; flex-direction: column; }
+    .semester-title { font-weight: bold; font-size: 1.2rem; margin-bottom: 12px; text-align: center; }
+    .courses { margin-bottom: 16px; }
+    .course { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    select { font-size: 1rem; padding: 2px 5px; border-radius: 4px; }
+    .add-btn, .add-semester-btn, .remove-btn { background: #0053ba; color: #fff; border: none; border-radius: 4px; padding: 4px 12px; font-size: 1rem; cursor: pointer; }
+    .add-btn:hover, .add-semester-btn:hover, .remove-btn:hover { background: #003599; }
+    .gpa-row { font-weight: bold; margin: 6px 0 0; border-top: 1px solid #eaeaea; padding-top: 8px; text-align: center; font-size: 1.05rem; }
+    .cumulative { margin-top: 20px; text-align: center; font-size: 1.15rem; font-weight: bold; }
+    .actions { text-align: center; margin-bottom: 22px; }
+    @media(max-width: 800px) {
+      .container { flex-direction: column; gap: 18px; }
+      .semester { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <h1>GPA Calculator</h1>
+  <div class="actions">
+    <button class="add-semester-btn" onclick="addSemester()">Add Semester</button>
+  </div>
+  <div class="container" id="semesters"></div>
+  <div class="cumulative">
+    Cumulative GPA: <span id="cumulativeGPA">0.00</span>
+  </div>
+
+  <script>
+    // Grade scale (your school's system)
+    const gradeOptions = [
+      { label: \"A+\", value: 4.0 },
+      { label: \"A\",  value: 3.75 },
+      { label: \"B+\", value: 3.5 },
+      { label: \"B\",  value: 3.0 },
+      { label: \"C+\", value: 2.5 },
+      { label: \"C\",  value: 2.0 },
+      { label: \"D+\", value: 1.5 },
+      { label: \"D\",  value: 1.0 },
+      { label: \"F\",  value: 0.0 }
+    ];
+
+    const creditOptions = [1, 2, 3, 4];
+
+    let semesterCount = 0;
+    let courseCounts = [];
+
+    function addSemester() {
+      semesterCount++;
+      courseCounts.push(1);
+      const semestersDiv = document.getElementById('semesters');
+      const semesterDiv = document.createElement('div');
+      semesterDiv.className = 'semester';
+      semesterDiv.id = `semester-${semesterCount}`;
+      semesterDiv.innerHTML = `
+        <div class="semester-title">Semester ${semesterCount}
+          <button class="remove-btn" style="float:right" onclick="removeSemester(${semesterCount})">×</button>
+        </div>
+        <div class="courses" id="courses-${semesterCount}"></div>
+        <button class="add-btn" onclick="addCourse(${semesterCount})">Add Course</button>
+        <div class="gpa-row">Term GPA: <span id="termGPA-${semesterCount}">0.00</span></div>
+      `;
+      semestersDiv.appendChild(semesterDiv);
+      addCourse(semesterCount);
+      recalculateAll();
+    }
+
+    function removeSemester(semNum) {
+      courseCounts[semNum-1] = 0;
+      const el = document.getElementById(`semester-${semNum}`);
+      if (el) el.remove();
+      recalculateAll();
+    }
+
+    function addCourse(semNum) {
+      const coursesDiv = document.getElementById(`courses-${semNum}`);
+      if (!coursesDiv) return;
+      const courseNum = ++courseCounts[semNum-1];
+      const courseDiv = document.createElement('div');
+      courseDiv.className = 'course';
+      courseDiv.id = `course-${semNum}-${courseNum}`;
+      courseDiv.innerHTML = `
+        <label>Grade
+          <select onchange="recalculateAll()" id="grade-${semNum}-${courseNum}">
+            ${gradeOptions.map(g => `<option value="${g.value}">${g.label}</option>`).join("")}
+          </select>
+        </label>
+        <label>Credits
+          <select onchange="recalculateAll()" id="credit-${semNum}-${courseNum}">
+            ${creditOptions.map(c => `<option value="${c}">${c}</option>`).join("")}
+          </select>
+        </label>
+        <button class="remove-btn" onclick="removeCourse(${semNum},${courseNum})">−</button>
+      `;
+      coursesDiv.appendChild(courseDiv);
+      recalculateAll();
+    }
+
+    function removeCourse(semNum, courseNum) {
+      const el = document.getElementById(`course-${semNum}-${courseNum}`);
+      if (el) el.remove();
+      recalculateAll();
+    }
+
+    // Calculate term and cumulative GPA
+    function recalculateAll() {
+      let totalPoints = 0, totalCredits = 0;
+      for (let s = 1; s <= semesterCount; s++) {
+        const coursesDiv = document.getElementById(`courses-${s}`);
+        if (!coursesDiv) continue;
+        const courseDivs = Array.from(coursesDiv.getElementsByClassName('course'));
+        let termPoints = 0, termCredits = 0;
+        courseDivs.forEach(div => {
+          const gradeSel = div.querySelector('select[id^="grade-"]');
+          const creditSel = div.querySelector('select[id^="credit-"]');
+          if (gradeSel && creditSel) {
+            const grade = parseFloat(gradeSel.value);
+            const credit = parseInt(creditSel.value, 10);
+            termPoints += grade * credit;
+            termCredits += credit;
+          }
+        });
+        const termGPA = termCredits ? (termPoints / termCredits) : 0;
+        document.getElementById(`termGPA-${s}`).innerText = termGPA.toFixed(2);
+        totalPoints += termPoints;
+        totalCredits += termCredits;
+      }
+      const cumulativeGPA = totalCredits ? (totalPoints / totalCredits) : 0;
+      document.getElementById('cumulativeGPA').innerText = cumulativeGPA.toFixed(2);
+    }
+
+    // Start with 1 semester by default
+    window.onload = addSemester;
+  </script>
+</body>
+</html>
