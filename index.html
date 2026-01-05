@@ -3,43 +3,105 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>GPA Calculator</title>
+  <title>GPA Calculator — 8 Semesters</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #f6f8fa; margin: 0; padding: 30px; color: #222; }
-    h1 { text-align: center; font-size: 2rem; margin-bottom: 1em; }
-    .container { display: flex; gap: 30px; overflow-x: auto; margin-bottom: 30px; }
-    .semester { background: #fff; border-radius: 8px; box-shadow: 0 2px 6px #d4d4d4; padding: 20px; min-width: 240px; display: flex; flex-direction: column; }
-    .semester-title { font-weight: bold; font-size: 1.2rem; margin-bottom: 12px; text-align: center; position: relative; }
-    .courses { margin-bottom: 16px; }
-    .course { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-    select { font-size: 1rem; padding: 2px 5px; border-radius: 4px; }
-    .add-btn, .add-semester-btn, .remove-btn { background: #0053ba; color: #fff; border: none; border-radius: 4px; padding: 4px 12px; font-size: 1rem; cursor: pointer; }
-    .add-btn:hover, .add-semester-btn:hover, .remove-btn:hover { background: #003599; }
-    .remove-btn.small { padding: 2px 8px; font-size: 0.9rem; }
-    .gpa-row { font-weight: bold; margin: 6px 0 0; border-top: 1px solid #eaeaea; padding-top: 8px; text-align: center; font-size: 1.05rem; }
-    .cumulative { margin-top: 20px; text-align: center; font-size: 1.15rem; font-weight: bold; }
-    .actions { text-align: center; margin-bottom: 22px; }
-    @media(max-width: 800px) {
-      .container { flex-direction: column; gap: 18px; }
-      .semester { width: 100%; }
+    :root{
+      --bg: #f6f8fa;
+      --card: #fff;
+      --accent: #0053ba;
+      --accent-hover: #003599;
+      --muted: #666;
     }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: var(--bg);
+      margin: 0;
+      padding: 22px;
+      color: #222;
+    }
+    header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+    h1 { font-size:1.25rem; margin:0; }
+    .subtitle { color:var(--muted); font-size:0.95rem; margin:0; }
+
+    /* Grid layout: ensures no horizontal scroll; grid will wrap into rows */
+    .container {
+      display: grid;
+      gap: 18px;
+      /* 4 columns on wide screens -> 2 rows of 4 = 8 visible without horizontal scroll */
+      grid-template-columns: repeat(4, 1fr);
+      align-items: start;
+    }
+
+    .semester {
+      background: var(--card);
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      min-height: 220px;
+    }
+
+    .semester-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:8px;
+    }
+    .courses { margin-bottom: 8px; display:flex; flex-direction:column; gap:8px; }
+
+    .course { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    label { font-size:0.9rem; color: #111; display:flex; align-items:center; gap:6px; }
+    select { padding:6px 8px; border-radius:6px; border:1px solid #e6e6e6; background:white; font-size:0.95rem; }
+    button { cursor:pointer; border: none; border-radius:6px; padding:6px 10px; background:var(--accent); color:white; }
+    button[disabled]{ opacity:0.5; cursor:not-allowed; }
+    .small { padding:4px 8px; font-size:0.9rem; }
+
+    .controls { display:flex; gap:8px; align-items:center; }
+    .gpa-row { margin-top:auto; border-top:1px solid #eee; padding-top:8px; font-weight:600; text-align:center; }
+    .cumulative { margin-top:14px; text-align:center; font-weight:700; font-size:1.05rem; }
+
+    /* Responsive: 2 columns on tablet, 1 column on phone */
+    @media (max-width:1200px) {
+      .container { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width:900px) {
+      .container { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width:540px) {
+      .container { grid-template-columns: 1fr; }
+      .semester { min-height: auto; }
+    }
+
   </style>
 </head>
 <body>
-  <h1>GPA Calculator</h1>
-  <div class="actions">
-    <button id="add-semester-btn" class="add-semester-btn">Add Semester</button>
-  </div>
-  <div class="container" id="semesters"></div>
-  <div class="cumulative">
-    Cumulative GPA: <span id="cumulativeGPA">0.00</span>
-  </div>
+  <header>
+    <div>
+      <h1>GPA Calculator</h1>
+      <p class="subtitle">8 semesters prefilled — max 6 courses per semester. GPA updates automatically.</p>
+    </div>
+    <div class="controls">
+      <button id="resetBtn" class="small">Reset to defaults</button>
+      <button id="exportBtn" class="small">Export JSON</button>
+      <button id="importBtn" class="small">Import JSON</button>
+      <input id="importFile" type="file" accept="application/json" style="display:none" />
+    </div>
+  </header>
+
+  <main>
+    <div class="container" id="semesters"></div>
+
+    <div class="cumulative">
+      Cumulative GPA: <span id="cumulativeGPA">0.00</span>
+    </div>
+  </main>
 
   <script>
-    (function () {
-      // Defensive coding + helpful console logs
-      console.log('GPA Calculator script loaded');
-
+    (function(){
+      // Grade scale (A+ and A, no A-)
       const gradeOptions = [
         { label: "A+", value: 4.0 },
         { label: "A",  value: 3.75 },
@@ -53,14 +115,35 @@
       ];
       const creditOptions = [1,2,3,4];
 
-      let semesterCount = 0;
-      let courseCounts = []; // holds number of courses per semester (starts at 0 for new semester)
+      const MAX_SEMESTERS = 8;
+      const MAX_COURSES = 6; // limit per semester
 
       const semestersDiv = document.getElementById('semesters');
       const cumulativeEl = document.getElementById('cumulativeGPA');
-      const addSemesterBtn = document.getElementById('add-semester-btn');
+      const resetBtn = document.getElementById('resetBtn');
+      const exportBtn = document.getElementById('exportBtn');
+      const importBtn = document.getElementById('importBtn');
+      const importFile = document.getElementById('importFile');
 
-      // Public functions (exposed in closure; no reliance on global scope)
+      // Helper: create a select element from options (options are objects with label/value or plain values)
+      function makeSelectFrom(arr, idPrefix, semNum, courseNum) {
+        const sel = document.createElement('select');
+        sel.id = `${idPrefix}-${semNum}-${courseNum}`;
+        arr.forEach(opt => {
+          const o = document.createElement('option');
+          if (typeof opt === 'object') {
+            o.value = opt.value;
+            o.textContent = opt.label;
+          } else {
+            o.value = opt;
+            o.textContent = opt;
+          }
+          sel.appendChild(o);
+        });
+        sel.addEventListener('change', recalculateAll);
+        return sel;
+      }
+
       function createSemesterElement(semNum) {
         const div = document.createElement('div');
         div.className = 'semester';
@@ -68,18 +151,7 @@
 
         const title = document.createElement('div');
         title.className = 'semester-title';
-        title.textContent = `Semester ${semNum}`;
-
-        const removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.className = 'remove-btn small';
-        removeBtn.title = 'Remove semester';
-        removeBtn.textContent = '×';
-        removeBtn.style.position = 'absolute';
-        removeBtn.style.right = '10px';
-        removeBtn.style.top = '6px';
-        removeBtn.addEventListener('click', () => removeSemester(semNum));
-        title.appendChild(removeBtn);
+        title.innerHTML = `<span>Semester ${semNum}</span>`;
 
         const courses = document.createElement('div');
         courses.className = 'courses';
@@ -87,8 +159,9 @@
 
         const addCourseBtn = document.createElement('button');
         addCourseBtn.type = 'button';
-        addCourseBtn.className = 'add-btn';
+        addCourseBtn.className = 'small';
         addCourseBtn.textContent = 'Add Course';
+        addCourseBtn.id = `addCourseBtn-${semNum}`;
         addCourseBtn.addEventListener('click', () => addCourse(semNum));
 
         const gpaRow = document.createElement('div');
@@ -99,142 +172,195 @@
         div.appendChild(courses);
         div.appendChild(addCourseBtn);
         div.appendChild(gpaRow);
-
         return div;
       }
 
-      function addSemester() {
-        try {
-          semesterCount++;
-          courseCounts[semesterCount - 1] = 0; // start with zero courses; addCourse will increment
-          const semEl = createSemesterElement(semesterCount);
-          semestersDiv.appendChild(semEl);
-          addCourse(semesterCount); // add first course automatically
-          recalculateAll();
-          console.log(`Added semester ${semesterCount}`);
-        } catch (err) {
-          console.error('Error in addSemester:', err);
-        }
-      }
+      function addCourse(semNum, initialGradeValue, initialCreditValue) {
+        const coursesDiv = document.getElementById(`courses-${semNum}`);
+        if (!coursesDiv) return;
+        // enforce max by counting visible .course elements
+        const currentCount = coursesDiv.querySelectorAll('.course').length;
+        if (currentCount >= MAX_COURSES) return;
 
-      function removeSemester(semNum) {
-        try {
-          const el = document.getElementById(`semester-${semNum}`);
-          if (el) el.remove();
-          courseCounts[semNum - 1] = 0;
-          recalculateAll();
-          console.log(`Removed semester ${semNum}`);
-        } catch (err) {
-          console.error('Error in removeSemester:', err);
-        }
-      }
+        // course number used only for IDs, does not need to be contiguous after deletes
+        const courseNum = Date.now() + Math.floor(Math.random()*1000); // unique-ish id
+        const courseDiv = document.createElement('div');
+        courseDiv.className = 'course';
+        courseDiv.id = `course-${semNum}-${courseNum}`;
 
-      function makeSelect(options, idPrefix, semNum, courseNum) {
-        const sel = document.createElement('select');
-        sel.id = `${idPrefix}-${semNum}-${courseNum}`;
-        options.forEach(opt => {
-          const o = document.createElement('option');
-          o.value = opt.value !== undefined ? opt.value : opt;
-          o.textContent = opt.label !== undefined ? opt.label : opt;
-          sel.appendChild(o);
+        const gradeLabel = document.createElement('label');
+        gradeLabel.textContent = 'Grade ';
+        const gradeSel = makeSelectFrom(gradeOptions, 'grade', semNum, courseNum);
+        if (initialGradeValue !== undefined) gradeSel.value = initialGradeValue;
+        gradeLabel.appendChild(gradeSel);
+
+        const creditLabel = document.createElement('label');
+        creditLabel.textContent = 'Credits ';
+        const creditSel = makeSelectFrom(creditOptions, 'credit', semNum, courseNum);
+        if (initialCreditValue !== undefined) creditSel.value = initialCreditValue;
+        creditLabel.appendChild(creditSel);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'small';
+        removeBtn.textContent = 'Remove';
+        removeBtn.addEventListener('click', () => {
+          courseDiv.remove();
+          updateAddBtnState(semNum);
+          recalculateAll();
         });
-        sel.addEventListener('change', recalculateAll);
-        return sel;
+
+        courseDiv.appendChild(gradeLabel);
+        courseDiv.appendChild(creditLabel);
+        courseDiv.appendChild(removeBtn);
+
+        coursesDiv.appendChild(courseDiv);
+        updateAddBtnState(semNum);
+        recalculateAll();
       }
 
-      function addCourse(semNum) {
-        try {
-          const coursesDiv = document.getElementById(`courses-${semNum}`);
-          if (!coursesDiv) return;
-          const courseNum = ++courseCounts[semNum - 1]; // increment and use
-          const courseDiv = document.createElement('div');
-          courseDiv.className = 'course';
-          courseDiv.id = `course-${semNum}-${courseNum}`;
-
-          // Grade select
-          const gradeLabel = document.createElement('label');
-          gradeLabel.textContent = 'Grade ';
-          const gradeSel = makeSelect(gradeOptions, 'grade', semNum, courseNum);
-          gradeLabel.appendChild(gradeSel);
-
-          // Credit select
-          const creditLabel = document.createElement('label');
-          creditLabel.textContent = ' Credits ';
-          const creditSel = makeSelect(creditOptions, 'credit', semNum, courseNum);
-          creditLabel.appendChild(creditSel);
-
-          // Remove course button
-          const removeBtn = document.createElement('button');
-          removeBtn.type = 'button';
-          removeBtn.className = 'remove-btn small';
-          removeBtn.textContent = '−';
-          removeBtn.title = 'Remove course';
-          removeBtn.addEventListener('click', () => {
-            courseDiv.remove();
-            recalculateAll();
-          });
-
-          courseDiv.appendChild(gradeLabel);
-          courseDiv.appendChild(creditLabel);
-          courseDiv.appendChild(removeBtn);
-
-          coursesDiv.appendChild(courseDiv);
-          recalculateAll();
-          console.log(`Added course ${courseNum} to semester ${semNum}`);
-        } catch (err) {
-          console.error('Error in addCourse:', err);
+      function updateAddBtnState(semNum) {
+        const coursesDiv = document.getElementById(`courses-${semNum}`);
+        if (!coursesDiv) return;
+        const addBtn = document.getElementById(`addCourseBtn-${semNum}`);
+        const currentCount = coursesDiv.querySelectorAll('.course').length;
+        if (currentCount >= MAX_COURSES) {
+          addBtn.disabled = true;
+        } else {
+          addBtn.disabled = false;
         }
       }
 
       function recalculateAll() {
-        try {
-          let totalPoints = 0, totalCredits = 0;
-          for (let s = 1; s <= semesterCount; s++) {
-            const coursesDiv = document.getElementById(`courses-${s}`);
-            if (!coursesDiv) continue;
-            const courseDivs = Array.from(coursesDiv.getElementsByClassName('course'));
-            let termPoints = 0, termCredits = 0;
-            courseDivs.forEach(div => {
-              const gradeSel = div.querySelector('select[id^="grade-"]');
-              const creditSel = div.querySelector('select[id^="credit-"]');
-              if (gradeSel && creditSel) {
-                const grade = parseFloat(gradeSel.value || 0);
-                const credit = parseInt(creditSel.value || 0, 10);
-                if (!isNaN(grade) && !isNaN(credit)) {
-                  termPoints += grade * credit;
-                  termCredits += credit;
-                }
+        let totalPoints = 0, totalCredits = 0;
+        for (let s = 1; s <= MAX_SEMESTERS; s++) {
+          const coursesDiv = document.getElementById(`courses-${s}`);
+          if (!coursesDiv) continue;
+          const courseDivs = Array.from(coursesDiv.getElementsByClassName('course'));
+          let termPoints = 0, termCredits = 0;
+          courseDivs.forEach(div => {
+            const gradeSel = div.querySelector('select[id^="grade-"]');
+            const creditSel = div.querySelector('select[id^="credit-"]');
+            if (gradeSel && creditSel) {
+              const grade = parseFloat(gradeSel.value || 0);
+              const credit = parseInt(creditSel.value || 0, 10);
+              if (!isNaN(grade) && !isNaN(credit)) {
+                termPoints += grade * credit;
+                termCredits += credit;
               }
-            });
-            const termGPA = termCredits ? (termPoints / termCredits) : 0;
-            const termEl = document.getElementById(`termGPA-${s}`);
-            if (termEl) termEl.innerText = termGPA.toFixed(2);
-            totalPoints += termPoints;
-            totalCredits += termCredits;
-          }
-          const cumulativeGPA = totalCredits ? (totalPoints / totalCredits) : 0;
-          cumulativeEl.innerText = cumulativeGPA.toFixed(2);
-        } catch (err) {
-          console.error('Error in recalculateAll:', err);
+            }
+          });
+          const termGPA = termCredits ? (termPoints / termCredits) : 0;
+          const termEl = document.getElementById(`termGPA-${s}`);
+          if (termEl) termEl.innerText = termGPA.toFixed(2);
+          totalPoints += termPoints;
+          totalCredits += termCredits;
         }
+        const cumulativeGPA = totalCredits ? (totalPoints / totalCredits) : 0;
+        cumulativeEl.innerText = cumulativeGPA.toFixed(2);
       }
 
-      // Hook up top-level Add Semester button
-      addSemesterBtn.addEventListener('click', addSemester);
-
-      // Start with one semester
-      document.addEventListener('DOMContentLoaded', () => {
-        try {
-          addSemester();
-        } catch (err) {
-          console.error('Error initializing page:', err);
+      function buildAllSemesters(prefill=true) {
+        semestersDiv.innerHTML = '';
+        for (let s = 1; s <= MAX_SEMESTERS; s++) {
+          const semEl = createSemesterElement(s);
+          semestersDiv.appendChild(semEl);
+          // prefill up to MAX_COURSES
+          if (prefill) {
+            for (let c = 0; c < MAX_COURSES; c++) addCourse(s);
+          }
+          updateAddBtnState(s);
         }
+        recalculateAll();
+      }
+
+      function resetToDefaults() {
+        if (!confirm('Reset all semesters and courses to default 8x6 configuration?')) return;
+        buildAllSemesters(true);
+        // scroll to top
+        window.scrollTo({top:0, behavior:'smooth'});
+      }
+
+      // Export current state as JSON
+      function exportJSON() {
+        const data = { semesters: [] };
+        for (let s = 1; s <= MAX_SEMESTERS; s++) {
+          const coursesDiv = document.getElementById(`courses-${s}`);
+          const courseDivs = coursesDiv ? Array.from(coursesDiv.getElementsByClassName('course')) : [];
+          const semData = [];
+          courseDivs.forEach(div => {
+            const gradeSel = div.querySelector('select[id^="grade-"]');
+            const creditSel = div.querySelector('select[id^="credit-"]');
+            semData.push({
+              gradeValue: gradeSel ? gradeSel.value : null,
+              creditValue: creditSel ? creditSel.value : null
+            });
+          });
+          data.semesters.push(semData);
+        }
+        const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'gpa-setup.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      // Import JSON from file or prompt
+      function importJSONFile(file) {
+        const reader = new FileReader();
+        reader.onload = function(e){
+          try {
+            const data = JSON.parse(e.target.result);
+            applyImportedData(data);
+          } catch(err) {
+            alert('Invalid JSON file.');
+          }
+        };
+        reader.readAsText(file);
+      }
+      function applyImportedData(data){
+        if (!data || !Array.isArray(data.semesters)) {
+          alert('Invalid format — expected { semesters: [ ... ] }');
+          return;
+        }
+        // rebuild semesters, applying given data where possible
+        semestersDiv.innerHTML = '';
+        for (let s = 0; s < MAX_SEMESTERS; s++) {
+          const semNum = s+1;
+          const semEl = createSemesterElement(semNum);
+          semestersDiv.appendChild(semEl);
+          const semData = data.semesters[s] || [];
+          // add courses from semData (up to MAX_COURSES); if none, prefill 0
+          const toAdd = Math.min(semData.length, MAX_COURSES);
+          for (let i=0;i<toAdd;i++){
+            const gd = semData[i];
+            addCourse(semNum, gd.gradeValue, gd.creditValue);
+          }
+          // if imported had fewer than MAX_COURSES, keep it that way; else prefilled above
+          updateAddBtnState(semNum);
+        }
+        recalculateAll();
+      }
+
+      // Hook buttons
+      resetBtn.addEventListener('click', resetToDefaults);
+      exportBtn.addEventListener('click', exportJSON);
+      importBtn.addEventListener('click', () => importFile.click());
+      importFile.addEventListener('change', (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (f) importJSONFile(f);
+        importFile.value = ''; // reset
       });
 
-      // Expose for debugging in console if you want:
-      window._gpa = {
-        addSemester, addCourse, removeSemester, recalculateAll
-      };
+      // Initialize page with 8 semesters and 6 courses each
+      buildAllSemesters(true);
+
+      // expose for debug
+      window._gpa = { recalculateAll, addCourse, buildAllSemesters };
 
     })();
   </script>
