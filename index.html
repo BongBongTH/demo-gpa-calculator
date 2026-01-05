@@ -16,17 +16,46 @@
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
       background: var(--bg);
       margin: 0;
-      padding: 22px;
+      padding: 18px;
       color: #222;
     }
-    header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
-    h1 { font-size:1.25rem; margin:0; }
+
+    header {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:12px;
+      flex-wrap:wrap;
+    }
+
+    .titleBlock { display:flex; flex-direction:column; gap:6px; min-width:0; }
+    h1 { font-size:1.2rem; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .subtitle { color:var(--muted); font-size:0.95rem; margin:0; }
+
+    /* Prominent cumulative GPA in header */
+    .cumulativeHeader {
+      background: linear-gradient(90deg, rgba(0,83,186,0.08), rgba(0,83,186,0.04));
+      border: 1px solid rgba(0,83,186,0.08);
+      padding: 10px 14px;
+      border-radius: 10px;
+      display:flex;
+      flex-direction:column;
+      align-items:flex-end;
+      gap:4px;
+      min-width:160px;
+    }
+    .cumulativeHeader .label { font-size:0.85rem; color:var(--muted); }
+    .cumulativeHeader .value { font-size:1.35rem; font-weight:800; color:var(--accent); }
+
+    .controls { display:flex; gap:8px; align-items:center; margin-left:8px; flex-wrap:wrap; }
+    .controls .small { padding:6px 10px; border-radius:8px; font-size:0.9rem; background:var(--accent); color:#fff; border:none; cursor:pointer; }
+    .controls .small[disabled]{ opacity:0.5; cursor:not-allowed; }
 
     /* Grid layout: ensures no horizontal scroll; grid will wrap into rows */
     .container {
       display: grid;
-      gap: 18px;
+      gap: 14px;
       /* 4 columns on wide screens -> 2 rows of 4 = 8 visible without horizontal scroll */
       grid-template-columns: repeat(4, 1fr);
       align-items: start;
@@ -36,10 +65,10 @@
       background: var(--card);
       border-radius: 8px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.06);
-      padding: 14px;
+      padding: 12px;
       display: flex;
       flex-direction: column;
-      min-height: 220px;
+      min-height: 180px; /* slightly reduced so header + grid fit more often */
     }
 
     .semester-title {
@@ -59,11 +88,10 @@
     button[disabled]{ opacity:0.5; cursor:not-allowed; }
     .small { padding:4px 8px; font-size:0.9rem; }
 
-    .controls { display:flex; gap:8px; align-items:center; }
     .gpa-row { margin-top:auto; border-top:1px solid #eee; padding-top:8px; font-weight:600; text-align:center; }
-    .cumulative { margin-top:14px; text-align:center; font-weight:700; font-size:1.05rem; }
+    /* Removed bottom cumulative block - using header cumulative */
 
-    /* Responsive: 2 columns on tablet, 1 column on phone */
+    /* Responsive: 3/2/1 columns */
     @media (max-width:1200px) {
       .container { grid-template-columns: repeat(3, 1fr); }
     }
@@ -73,30 +101,35 @@
     @media (max-width:540px) {
       .container { grid-template-columns: 1fr; }
       .semester { min-height: auto; }
+      header { align-items:flex-start; }
     }
 
   </style>
 </head>
 <body>
   <header>
-    <div>
+    <div class="titleBlock">
       <h1>GPA Calculator</h1>
       <p class="subtitle">8 semesters prefilled — max 6 courses per semester. GPA updates automatically.</p>
     </div>
-    <div class="controls">
-      <button id="resetBtn" class="small">Reset to defaults</button>
-      <button id="exportBtn" class="small">Export JSON</button>
-      <button id="importBtn" class="small">Import JSON</button>
-      <input id="importFile" type="file" accept="application/json" style="display:none" />
+
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div class="controls" aria-hidden="false">
+        <button id="resetBtn" class="small">Reset to defaults</button>
+        <button id="exportBtn" class="small">Export JSON</button>
+        <button id="importBtn" class="small">Import JSON</button>
+        <input id="importFile" type="file" accept="application/json" style="display:none" />
+      </div>
+
+      <div class="cumulativeHeader" aria-live="polite">
+        <div class="label">Cumulative GPA</div>
+        <div class="value" id="cumulativeGPA">0.00</div>
+      </div>
     </div>
   </header>
 
   <main>
     <div class="container" id="semesters"></div>
-
-    <div class="cumulative">
-      Cumulative GPA: <span id="cumulativeGPA">0.00</span>
-    </div>
   </main>
 
   <script>
@@ -257,7 +290,7 @@
           totalCredits += termCredits;
         }
         const cumulativeGPA = totalCredits ? (totalPoints / totalCredits) : 0;
-        cumulativeEl.innerText = cumulativeGPA.toFixed(2);
+        if (cumulativeEl) cumulativeEl.innerText = cumulativeGPA.toFixed(2);
       }
 
       function buildAllSemesters(prefill=true) {
@@ -340,7 +373,6 @@
             const gd = semData[i];
             addCourse(semNum, gd.gradeValue, gd.creditValue);
           }
-          // if imported had fewer than MAX_COURSES, keep it that way; else prefilled above
           updateAddBtnState(semNum);
         }
         recalculateAll();
