@@ -54,11 +54,10 @@
     .controls .small { padding:6px 10px; border-radius:8px; font-size:0.9rem; background:var(--accent); color:#fff; border:none; cursor:pointer; }
     .controls .small[disabled]{ opacity:0.5; cursor:not-allowed; }
 
-    /* Grid layout: ensures no horizontal scroll; grid will wrap into rows */
+    /* Grid layout */
     .container {
       display: grid;
       gap: 14px;
-      /* 4 columns on wide screens -> 2 rows of 4 = 8 visible without horizontal scroll */
       grid-template-columns: repeat(4, 1fr);
       align-items: start;
     }
@@ -70,8 +69,12 @@
       padding: 12px;
       display: flex;
       flex-direction: column;
-      min-height: 180px; /* slightly reduced so header + grid fit more often */
+      min-height: 180px;
+      transition: opacity .18s linear;
+      position: relative;
     }
+
+    .semester.disabled { opacity: 0.55; }
 
     .semester-title {
       font-weight: 600;
@@ -102,20 +105,65 @@
     .small { padding:4px 8px; font-size:0.9rem; }
 
     .gpa-row { margin-top:auto; border-top:1px solid #eee; padding-top:8px; font-weight:600; text-align:center; }
-    /* Removed bottom cumulative block - using header cumulative */
+
+    /* Disabled overlay: covers the body of the semester (not the header) */
+    .disabledOverlay {
+      position: absolute;
+      left: 0;
+      right: 0;
+      /* leave space for header/title (approx 44px) so the Enable checkbox remains clickable */
+      top: 44px;
+      bottom: 0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background: linear-gradient(180deg, rgba(255,255,255,0.6), rgba(255,255,255,0.6));
+      pointer-events: auto; /* block interactions with inner controls */
+      border-radius: 0 0 8px 8px;
+    }
+    .disabledOverlayContent {
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:6px;
+      color:var(--muted);
+      font-size:0.95rem;
+    }
+    .disabledIcon {
+      width:44px;
+      height:44px;
+      display:inline-block;
+      border-radius:999px;
+      background: rgba(0,0,0,0.05);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .disabledIcon svg { width:22px; height:22px; fill: rgba(0,0,0,0.5); }
+
+    /* Floating, movable cumulative GPA */
+    #floatGPA {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 9999;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+      padding: 10px 12px;
+      min-width: 120px;
+      text-align: center;
+      touch-action: none;
+      display: none; /* hidden by default; shown only when header not visible */
+    }
+    #floatGPA .label { font-size: 0.78rem; color: var(--muted); margin-bottom:4px; }
+    #floatGPA .value { font-weight:800; color:var(--accent); font-size:1.1rem; }
+    .floatHint { font-size:0.72rem; color:var(--muted); margin-top:6px; }
 
     /* Responsive: 3/2/1 columns */
-    @media (max-width:1200px) {
-      .container { grid-template-columns: repeat(3, 1fr); }
-    }
-    @media (max-width:900px) {
-      .container { grid-template-columns: repeat(2, 1fr); }
-    }
-    @media (max-width:540px) {
-      .container { grid-template-columns: 1fr; }
-      .semester { min-height: auto; }
-      header { align-items:flex-start; }
-    }
+    @media (max-width:1200px) { .container { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width:900px)  { .container { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width:540px)  { .container { grid-template-columns: 1fr; } .semester { min-height: auto; } header { align-items:flex-start; } }
 
   </style>
 </head>
@@ -123,7 +171,7 @@
   <header>
     <div class="titleBlock">
       <h1>GPA Calculator</h1>
-      <p class="subtitle">Semesters 1–2 fixed to exactly 2 courses; semesters 3–8 allow up to 6. GPA updates automatically.</p>
+      <p class="subtitle">You can disable a semester (3–8) and all following ones. Semesters 1–2 remain fixed.</p>
     </div>
 
     <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
@@ -134,7 +182,7 @@
         <input id="importFile" type="file" accept="application/json" style="display:none" />
       </div>
 
-      <div class="cumulativeHeader" aria-live="polite">
+      <div class="cumulativeHeader" aria-live="polite" id="cumulativeHeader">
         <div class="label">Cumulative GPA</div>
         <div class="value" id="cumulativeGPA">0.00</div>
       </div>
@@ -145,9 +193,15 @@
     <div class="container" id="semesters"></div>
   </main>
 
+  <!-- Floating, movable cumulative GPA for mobile/scroll -->
+  <div id="floatGPA" role="status" aria-live="polite" title="Drag to move">
+    <div class="label">Cumulative GPA</div>
+    <div class="value" id="floatCumulativeGPA">0.00</div>
+    <div class="floatHint">Drag to move</div>
+  </div>
+
   <script>
     (function(){
-      // Grade scale (A+ and A, no A-)
       const gradeOptions = [
         { label: "A+", value: 4.0 },
         { label: "A",  value: 3.75 },
@@ -159,19 +213,25 @@
         { label: "D",  value: 1.0 },
         { label: "F",  value: 0.0 }
       ];
-      const creditOptions = [3, 2];
+      const creditOptions = [1,2,3,4];
 
       const MAX_SEMESTERS = 8;
-      const DEFAULT_MAX_COURSES = 6; // default limit per semester
+      const DEFAULT_MAX_COURSES = 6;
 
       const semestersDiv = document.getElementById('semesters');
       const cumulativeEl = document.getElementById('cumulativeGPA');
+      const floatCumulativeEl = document.getElementById('floatCumulativeGPA');
+      const cumulativeHeader = document.getElementById('cumulativeHeader');
       const resetBtn = document.getElementById('resetBtn');
       const exportBtn = document.getElementById('exportBtn');
       const importBtn = document.getElementById('importBtn');
       const importFile = document.getElementById('importFile');
+      const floatGPA = document.getElementById('floatGPA');
 
-      // Per-semester max/min: semesters 1 and 2 -> exactly 2 courses; others -> 0..DEFAULT_MAX_COURSES
+      // track enabled status per semester (1-based index). Semesters 1-2 always true.
+      const enabled = new Array(MAX_SEMESTERS+1).fill(true);
+      enabled[1] = true; enabled[2] = true;
+
       function maxCoursesForSemester(semNum) {
         if (semNum === 1 || semNum === 2) return 2;
         return DEFAULT_MAX_COURSES;
@@ -181,23 +241,16 @@
         return 0;
       }
       function isRemovableInSemester(semNum) {
-        // If minCoursesForSemester > 0, don't show remove controls (keeps fixed)
         return minCoursesForSemester(semNum) === 0;
       }
 
-      // Helper: create a select element from options (options are objects with label/value or plain values)
       function makeSelectFrom(arr, idPrefix, semNum, courseNum) {
         const sel = document.createElement('select');
         sel.id = `${idPrefix}-${semNum}-${courseNum}`;
         arr.forEach(opt => {
           const o = document.createElement('option');
-          if (typeof opt === 'object') {
-            o.value = opt.value;
-            o.textContent = opt.label;
-          } else {
-            o.value = opt;
-            o.textContent = opt;
-          }
+          if (typeof opt === 'object') { o.value = opt.value; o.textContent = opt.label; }
+          else { o.value = opt; o.textContent = opt; }
           sel.appendChild(o);
         });
         sel.addEventListener('change', recalculateAll);
@@ -211,8 +264,16 @@
 
         const title = document.createElement('div');
         title.className = 'semester-title';
-        const badgeHTML = (semNum === 1 || semNum === 2) ? '<span class="badge">Max 2 courses</span>' : '';
+        const badgeHTML = (semNum === 1 || semNum === 2)
+          ? '<span class="badge">Fixed 2 courses</span>'
+          : `<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="enable-${semNum}" checked /> Enable</label>`;
         title.innerHTML = `<span>Semester ${semNum}</span>${badgeHTML}`;
+
+        // Hook up enable checkbox for sem >=3
+        if (semNum >= 3) {
+          const chk = title.querySelector(`#enable-${semNum}`);
+          chk.addEventListener('change', () => enableFrom(semNum, chk.checked));
+        }
 
         const courses = document.createElement('div');
         courses.className = 'courses';
@@ -233,19 +294,80 @@
         div.appendChild(courses);
         div.appendChild(addCourseBtn);
         div.appendChild(gpaRow);
+
         return div;
       }
 
+      function enableFrom(semNum, isEnabled) {
+        for (let s = semNum; s <= MAX_SEMESTERS; s++) {
+          setSemesterEnabled(s, isEnabled);
+          const chk = document.getElementById(`enable-${s}`);
+          if (chk) chk.checked = isEnabled;
+        }
+        recalculateAll();
+      }
+
+      function setSemesterEnabled(semNum, isEnabled) {
+        enabled[semNum] = !!isEnabled;
+        const semEl = document.getElementById(`semester-${semNum}`);
+        if (!semEl) return;
+        if (!isEnabled) semEl.classList.add('disabled'); else semEl.classList.remove('disabled');
+
+        // disable/enable inputs inside semester (but keep header checkbox enabled)
+        const selects = Array.from(semEl.querySelectorAll('select'));
+        selects.forEach(s => s.disabled = !isEnabled);
+
+        const addBtn = document.getElementById(`addCourseBtn-${semNum}`);
+        if (addBtn) addBtn.disabled = !isEnabled;
+
+        // For fixed semesters (1-2) prevent disabling
+        if (semNum === 1 || semNum === 2) {
+          if (!isEnabled) {
+            enabled[semNum] = true;
+            semEl.classList.remove('disabled');
+            selects.forEach(s => s.disabled = false);
+            if (addBtn) addBtn.disabled = false;
+          }
+        }
+
+        // manage disabled overlay (covering body under the title)
+        manageOverlay(semNum, !isEnabled);
+      }
+
+      function manageOverlay(semNum, show) {
+        const semEl = document.getElementById(`semester-${semNum}`);
+        if (!semEl) return;
+        let overlay = semEl.querySelector('.disabledOverlay');
+        if (show) {
+          if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'disabledOverlay';
+            overlay.innerHTML = `
+              <div class="disabledOverlayContent" aria-hidden="true">
+                <div class="disabledIcon" aria-hidden="true">
+                  <!-- circle-slash SVG -->
+                  <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                    <path d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2zm4.95 16.95A8 8 0 1 1 7.05 5.05 8 8 0 0 1 16.95 18.95zM8.46 7.05l8.49 8.49" stroke="none"></path>
+                  </svg>
+                </div>
+                <div>Disabled</div>
+              </div>`;
+            semEl.appendChild(overlay);
+          }
+        } else {
+          if (overlay) overlay.remove();
+        }
+      }
+
       function addCourse(semNum, initialGradeValue, initialCreditValue) {
+        if (!enabled[semNum]) return;
         const coursesDiv = document.getElementById(`courses-${semNum}`);
         if (!coursesDiv) return;
-        // enforce max by counting visible .course elements
         const currentCount = coursesDiv.querySelectorAll('.course').length;
         const maxAllowed = maxCoursesForSemester(semNum);
         if (currentCount >= maxAllowed) return;
 
-        // course number used only for IDs, does not need to be contiguous after deletes
-        const courseNum = Date.now() + Math.floor(Math.random()*1000); // unique-ish id
+        const courseNum = Date.now() + Math.floor(Math.random()*1000);
         const courseDiv = document.createElement('div');
         courseDiv.className = 'course';
         courseDiv.id = `course-${semNum}-${courseNum}`;
@@ -265,7 +387,6 @@
         courseDiv.appendChild(gradeLabel);
         courseDiv.appendChild(creditLabel);
 
-        // Only add remove button for semesters that allow removals
         if (isRemovableInSemester(semNum)) {
           const removeBtn = document.createElement('button');
           removeBtn.type = 'button';
@@ -278,7 +399,6 @@
           });
           courseDiv.appendChild(removeBtn);
         } else {
-          // For clarity, show a subtle lock/indicator when removals are not allowed
           const infoSpan = document.createElement('span');
           infoSpan.style.color = 'var(--muted)';
           infoSpan.style.fontSize = '0.85rem';
@@ -297,16 +417,17 @@
         const addBtn = document.getElementById(`addCourseBtn-${semNum}`);
         const currentCount = coursesDiv.querySelectorAll('.course').length;
         const maxAllowed = maxCoursesForSemester(semNum);
-        if (currentCount >= maxAllowed) {
-          addBtn.disabled = true;
-        } else {
-          addBtn.disabled = false;
-        }
+        if (addBtn) addBtn.disabled = (!enabled[semNum] || currentCount >= maxAllowed);
       }
 
       function recalculateAll() {
         let totalPoints = 0, totalCredits = 0;
         for (let s = 1; s <= MAX_SEMESTERS; s++) {
+          if (!enabled[s]) {
+            const termEl = document.getElementById(`termGPA-${s}`);
+            if (termEl) termEl.innerText = '—';
+            continue;
+          }
           const coursesDiv = document.getElementById(`courses-${s}`);
           if (!coursesDiv) continue;
           const courseDivs = Array.from(coursesDiv.getElementsByClassName('course'));
@@ -325,12 +446,13 @@
           });
           const termGPA = termCredits ? (termPoints / termCredits) : 0;
           const termEl = document.getElementById(`termGPA-${s}`);
-          if (termEl) termEl.innerText = termGPA.toFixed(2);
+          if (termEl) termEl.innerText = termGPA ? termGPA.toFixed(2) : '0.00';
           totalPoints += termPoints;
           totalCredits += termCredits;
         }
         const cumulativeGPA = totalCredits ? (totalPoints / totalCredits) : 0;
-        if (cumulativeEl) cumulativeEl.innerText = cumulativeGPA.toFixed(2);
+        if (cumulativeEl) cumulativeEl.innerText = totalCredits ? cumulativeGPA.toFixed(2) : '0.00';
+        if (floatCumulativeEl) floatCumulativeEl.innerText = totalCredits ? cumulativeGPA.toFixed(2) : '0.00';
       }
 
       function buildAllSemesters(prefill=true) {
@@ -338,7 +460,7 @@
         for (let s = 1; s <= MAX_SEMESTERS; s++) {
           const semEl = createSemesterElement(s);
           semestersDiv.appendChild(semEl);
-          // prefill up to semester-specific max (or min if min>0)
+          enabled[s] = true;
           if (prefill) {
             const toPrefill = Math.max(minCoursesForSemester(s), Math.min(maxCoursesForSemester(s), maxCoursesForSemester(s)));
             for (let c = 0; c < toPrefill; c++) addCourse(s);
@@ -354,7 +476,6 @@
         window.scrollTo({top:0, behavior:'smooth'});
       }
 
-      // Export current state as JSON
       function exportJSON() {
         const data = { semesters: [] };
         for (let s = 1; s <= MAX_SEMESTERS; s++) {
@@ -369,7 +490,10 @@
               creditValue: creditSel ? creditSel.value : null
             });
           });
-          data.semesters.push(semData);
+          data.semesters.push({
+            enabled: !!enabled[s],
+            courses: semData
+          });
         }
         const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
         const url = URL.createObjectURL(blob);
@@ -382,7 +506,6 @@
         URL.revokeObjectURL(url);
       }
 
-      // Import JSON from file or prompt
       function importJSONFile(file) {
         const reader = new FileReader();
         reader.onload = function(e){
@@ -395,31 +518,40 @@
         };
         reader.readAsText(file);
       }
+
       function applyImportedData(data){
         if (!data || !Array.isArray(data.semesters)) {
-          alert('Invalid format — expected { semesters: [ ... ] }');
+          alert('Invalid format — expected { semesters: [ { enabled, courses: [...] } ] }');
           return;
         }
-        // rebuild semesters, applying given data where possible
         semestersDiv.innerHTML = '';
         for (let s = 0; s < MAX_SEMESTERS; s++) {
           const semNum = s+1;
           const semEl = createSemesterElement(semNum);
           semestersDiv.appendChild(semEl);
-          const semData = data.semesters[s] || [];
-          // add courses from semData up to semester-specific max
+          const semDataObj = data.semesters[s] || { enabled: true, courses: [] };
+          const semData = semDataObj.courses || [];
+          const shouldEnable = (semNum === 1 || semNum === 2) ? true : !!semDataObj.enabled;
+          enabled[semNum] = !!shouldEnable;
           const toAdd = Math.min(semData.length, maxCoursesForSemester(semNum));
           for (let i=0;i<toAdd;i++){
             const gd = semData[i];
             addCourse(semNum, gd.gradeValue, gd.creditValue);
           }
-          // ensure min courses if semester requires minimum
           const currentCount = document.getElementById(`courses-${semNum}`).querySelectorAll('.course').length;
           const minReq = minCoursesForSemester(semNum);
-          for (let k = currentCount; k < minReq; k++) {
-            addCourse(semNum); // add default courses to reach min
-          }
+          for (let k = currentCount; k < minReq; k++) addCourse(semNum);
+          setSemesterEnabled(semNum, enabled[semNum]);
+          const chk = document.getElementById(`enable-${semNum}`);
+          if (chk) chk.checked = !!enabled[semNum];
           updateAddBtnState(semNum);
+        }
+        for (let s = 3; s <= MAX_SEMESTERS; s++) {
+          const chk = document.getElementById(`enable-${s}`);
+          if (chk && !chk.checked) {
+            enableFrom(s, false);
+            break;
+          }
         }
         recalculateAll();
       }
@@ -431,14 +563,75 @@
       importFile.addEventListener('change', (e) => {
         const f = e.target.files && e.target.files[0];
         if (f) importJSONFile(f);
-        importFile.value = ''; // reset
+        importFile.value = '';
       });
 
-      // Initialize page with 8 semesters and per-semester course counts
+      // Floating draggable behavior (pointer events)
+      (function makeDraggable(el){
+        let dragging = false;
+        let offsetX = 0, offsetY = 0;
+
+        function onPointerDown(e){
+          dragging = true;
+          el.setPointerCapture && el.setPointerCapture(e.pointerId);
+          const rect = el.getBoundingClientRect();
+          offsetX = e.clientX - rect.left;
+          offsetY = e.clientY - rect.top;
+          el.style.transition = 'none';
+        }
+        function onPointerMove(e){
+          if (!dragging) return;
+          const x = e.clientX - offsetX;
+          const y = e.clientY - offsetY;
+          const margin = 8;
+          const maxX = window.innerWidth - el.offsetWidth - margin;
+          const maxY = window.innerHeight - el.offsetHeight - margin;
+          const clampedX = Math.max(margin, Math.min(maxX, x));
+          const clampedY = Math.max(margin, Math.min(maxY, y));
+          el.style.left = clampedX + 'px';
+          el.style.top = clampedY + 'px';
+          el.style.right = 'auto';
+          el.style.bottom = 'auto';
+        }
+        function onPointerUp(e){
+          dragging = false;
+          try { el.releasePointerCapture && el.releasePointerCapture(e.pointerId); } catch(_) {}
+          el.style.transition = '';
+        }
+
+        el.addEventListener('pointerdown', onPointerDown);
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp);
+      })(floatGPA);
+
+      // IntersectionObserver to show/hide floating GPA only when header cumulative not visible
+      (function manageFloatVisibility() {
+        if ('IntersectionObserver' in window) {
+          const obs = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+              const visible = entry.intersectionRatio > 0;
+              floatGPA.style.display = visible ? 'none' : 'block';
+            });
+          }, { root: null, threshold: 0.05 });
+          obs.observe(cumulativeHeader);
+        } else {
+          // fallback: on scroll/resize compute visibility
+          function check() {
+            const rect = cumulativeHeader.getBoundingClientRect();
+            const visible = rect.bottom > 0 && rect.top < window.innerHeight;
+            floatGPA.style.display = visible ? 'none' : 'block';
+          }
+          window.addEventListener('scroll', check, { passive: true });
+          window.addEventListener('resize', check);
+          check();
+        }
+      })();
+
+      // Initialize page
       buildAllSemesters(true);
 
       // expose for debug
-      window._gpa = { recalculateAll, addCourse, buildAllSemesters };
+      window._gpa = { recalculateAll, addCourse, buildAllSemesters, enableFrom };
 
     })();
   </script>
