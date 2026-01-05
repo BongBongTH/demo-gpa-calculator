@@ -11,6 +11,8 @@
       --accent: #0053ba;
       --accent-hover: #003599;
       --muted: #666;
+      --badge-bg: #e9f2ff;
+      --badge-border: #cfe3ff;
     }
     body {
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
@@ -79,6 +81,17 @@
       align-items:center;
       gap:8px;
     }
+
+    .badge {
+      background: var(--badge-bg);
+      border: 1px solid var(--badge-border);
+      color: var(--muted);
+      font-size: 0.78rem;
+      padding: 4px 8px;
+      border-radius: 999px;
+      white-space:nowrap;
+    }
+
     .courses { margin-bottom: 8px; display:flex; flex-direction:column; gap:8px; }
 
     .course { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
@@ -110,7 +123,7 @@
   <header>
     <div class="titleBlock">
       <h1>GPA Calculator</h1>
-      <p class="subtitle">8 semesters prefilled — max 6 courses per semester. GPA updates automatically.</p>
+      <p class="subtitle">Semesters 1–2 fixed to exactly 2 courses; semesters 3–8 allow up to 6. GPA updates automatically.</p>
     </div>
 
     <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
@@ -146,10 +159,10 @@
         { label: "D",  value: 1.0 },
         { label: "F",  value: 0.0 }
       ];
-      const creditOptions = [1,2,3,4];
+      const creditOptions = [3, 2];
 
       const MAX_SEMESTERS = 8;
-      const MAX_COURSES = 6; // limit per semester
+      const DEFAULT_MAX_COURSES = 6; // default limit per semester
 
       const semestersDiv = document.getElementById('semesters');
       const cumulativeEl = document.getElementById('cumulativeGPA');
@@ -157,6 +170,20 @@
       const exportBtn = document.getElementById('exportBtn');
       const importBtn = document.getElementById('importBtn');
       const importFile = document.getElementById('importFile');
+
+      // Per-semester max/min: semesters 1 and 2 -> exactly 2 courses; others -> 0..DEFAULT_MAX_COURSES
+      function maxCoursesForSemester(semNum) {
+        if (semNum === 1 || semNum === 2) return 2;
+        return DEFAULT_MAX_COURSES;
+      }
+      function minCoursesForSemester(semNum) {
+        if (semNum === 1 || semNum === 2) return 2;
+        return 0;
+      }
+      function isRemovableInSemester(semNum) {
+        // If minCoursesForSemester > 0, don't show remove controls (keeps fixed)
+        return minCoursesForSemester(semNum) === 0;
+      }
 
       // Helper: create a select element from options (options are objects with label/value or plain values)
       function makeSelectFrom(arr, idPrefix, semNum, courseNum) {
@@ -184,7 +211,8 @@
 
         const title = document.createElement('div');
         title.className = 'semester-title';
-        title.innerHTML = `<span>Semester ${semNum}</span>`;
+        const badgeHTML = (semNum === 1 || semNum === 2) ? '<span class="badge">Max 2 courses</span>' : '';
+        title.innerHTML = `<span>Semester ${semNum}</span>${badgeHTML}`;
 
         const courses = document.createElement('div');
         courses.className = 'courses';
@@ -213,7 +241,8 @@
         if (!coursesDiv) return;
         // enforce max by counting visible .course elements
         const currentCount = coursesDiv.querySelectorAll('.course').length;
-        if (currentCount >= MAX_COURSES) return;
+        const maxAllowed = maxCoursesForSemester(semNum);
+        if (currentCount >= maxAllowed) return;
 
         // course number used only for IDs, does not need to be contiguous after deletes
         const courseNum = Date.now() + Math.floor(Math.random()*1000); // unique-ish id
@@ -233,19 +262,29 @@
         if (initialCreditValue !== undefined) creditSel.value = initialCreditValue;
         creditLabel.appendChild(creditSel);
 
-        const removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.className = 'small';
-        removeBtn.textContent = 'Remove';
-        removeBtn.addEventListener('click', () => {
-          courseDiv.remove();
-          updateAddBtnState(semNum);
-          recalculateAll();
-        });
-
         courseDiv.appendChild(gradeLabel);
         courseDiv.appendChild(creditLabel);
-        courseDiv.appendChild(removeBtn);
+
+        // Only add remove button for semesters that allow removals
+        if (isRemovableInSemester(semNum)) {
+          const removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.className = 'small';
+          removeBtn.textContent = 'Remove';
+          removeBtn.addEventListener('click', () => {
+            courseDiv.remove();
+            updateAddBtnState(semNum);
+            recalculateAll();
+          });
+          courseDiv.appendChild(removeBtn);
+        } else {
+          // For clarity, show a subtle lock/indicator when removals are not allowed
+          const infoSpan = document.createElement('span');
+          infoSpan.style.color = 'var(--muted)';
+          infoSpan.style.fontSize = '0.85rem';
+          infoSpan.textContent = 'Fixed';
+          courseDiv.appendChild(infoSpan);
+        }
 
         coursesDiv.appendChild(courseDiv);
         updateAddBtnState(semNum);
@@ -257,7 +296,8 @@
         if (!coursesDiv) return;
         const addBtn = document.getElementById(`addCourseBtn-${semNum}`);
         const currentCount = coursesDiv.querySelectorAll('.course').length;
-        if (currentCount >= MAX_COURSES) {
+        const maxAllowed = maxCoursesForSemester(semNum);
+        if (currentCount >= maxAllowed) {
           addBtn.disabled = true;
         } else {
           addBtn.disabled = false;
@@ -298,9 +338,10 @@
         for (let s = 1; s <= MAX_SEMESTERS; s++) {
           const semEl = createSemesterElement(s);
           semestersDiv.appendChild(semEl);
-          // prefill up to MAX_COURSES
+          // prefill up to semester-specific max (or min if min>0)
           if (prefill) {
-            for (let c = 0; c < MAX_COURSES; c++) addCourse(s);
+            const toPrefill = Math.max(minCoursesForSemester(s), Math.min(maxCoursesForSemester(s), maxCoursesForSemester(s)));
+            for (let c = 0; c < toPrefill; c++) addCourse(s);
           }
           updateAddBtnState(s);
         }
@@ -308,9 +349,8 @@
       }
 
       function resetToDefaults() {
-        if (!confirm('Reset all semesters and courses to default 8x6 configuration?')) return;
+        if (!confirm('Reset all semesters and courses to default configuration?')) return;
         buildAllSemesters(true);
-        // scroll to top
         window.scrollTo({top:0, behavior:'smooth'});
       }
 
@@ -367,11 +407,17 @@
           const semEl = createSemesterElement(semNum);
           semestersDiv.appendChild(semEl);
           const semData = data.semesters[s] || [];
-          // add courses from semData (up to MAX_COURSES); if none, prefill 0
-          const toAdd = Math.min(semData.length, MAX_COURSES);
+          // add courses from semData up to semester-specific max
+          const toAdd = Math.min(semData.length, maxCoursesForSemester(semNum));
           for (let i=0;i<toAdd;i++){
             const gd = semData[i];
             addCourse(semNum, gd.gradeValue, gd.creditValue);
+          }
+          // ensure min courses if semester requires minimum
+          const currentCount = document.getElementById(`courses-${semNum}`).querySelectorAll('.course').length;
+          const minReq = minCoursesForSemester(semNum);
+          for (let k = currentCount; k < minReq; k++) {
+            addCourse(semNum); // add default courses to reach min
           }
           updateAddBtnState(semNum);
         }
@@ -388,7 +434,7 @@
         importFile.value = ''; // reset
       });
 
-      // Initialize page with 8 semesters and 6 courses each
+      // Initialize page with 8 semesters and per-semester course counts
       buildAllSemesters(true);
 
       // expose for debug
